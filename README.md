@@ -2,7 +2,7 @@
 
 一个本地运行、规则透明、可从反馈中学习的个人活动决策应用。它提供命令行和 Web 两种入口，支持半自动补全电影、书籍、专辑元数据，以及书架不足时的 AI 探索推荐。
 
-V3.1 Web 版提供独立分类书架、Phigros 风格主题色伸缩书脊、自动增层、回收站、旧卡 AI 补全、分类受控标签、书籍/游戏手动投入时间和同类同标题自动覆盖。数据库升级前会自动生成带时间戳的备份。
+Web 版提供独立分类书架、主题色伸缩书脊、批量导入、分类完成收藏馆、回收站、可审计 AI 补全、书籍/游戏投入时间和同类同标题自动覆盖。数据库升级前会自动生成带时间戳的备份。
 
 ## 环境
 
@@ -72,8 +72,18 @@ python -m decision_shelf decide --minutes 180 --energy high --categories movie,a
 
 ```powershell
 python -m decision_shelf action movie_inception start --session-id 1
-python -m decision_shelf action movie_inception complete --session-id 1 --rating 5 --review "很费脑，但正合适"
+python -m decision_shelf action movie_inception complete --session-id 1 --rating 8.7 --review "很费脑，但正合适"
 ```
+
+评分统一使用 `0～10` 分制，最多保留一位小数。已完成电影、书籍、专辑和游戏分别使用海报档案、完成书脊、黑胶收藏和游戏光盘陈列。
+
+### AI 简介补全规则
+
+- 已有简介永不覆盖。
+- 已匹配外部条目时优先采用外部原始简介。
+- 有可靠结构化事实时，AI 只能基于这些字段生成概述。
+- 只有标题时仅生成不含具体人物、年份、数字或情节的保守草稿，并永久标记“AI 辅助·未核验”。
+- 所有简介先进入编辑草稿，人工保存后才写入数据库；模型失败时保持为空，不生成虚假兜底文本。
 
 ## 命令
 

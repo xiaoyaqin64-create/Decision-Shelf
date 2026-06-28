@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from decision_shelf.database import Database
+from decision_shelf.deepseek import AIService, DeepSeekClient, DeepSeekConfig
+from decision_shelf.models import CardDraft
 from decision_shelf.webapp import create_app
 
 
@@ -73,6 +76,40 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(response.json()["items"][0]["source"], "fallback")
         saved = self.client.get(f"/api/cards/{card['id']}").json()
         self.assertRegex(saved["theme_color"], r"^#[0-9A-F]{6}$")
+
+    def test_completion_uses_ten_point_score_and_can_be_edited(self):
+        card = self.client.post("/api/cards", json={"category":"movie","title":"完成电影"}).json()
+        completed = self.client.post(f"/api/cards/{card['id']}/actions", json={
+            "action": "complete", "completed_at": "2026-06-01", "rating": 8.7, "review": "值得回味",
+        })
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["rating"], 8.7)
+        self.assertEqual(completed.json()["completed_at"], "2026-06-01")
+        edited = self.client.patch(f"/api/cards/{card['id']}/completion", json={
+            "completed_at": "2026-06-02", "rating": 9.1, "review": "第二次整理后的感想",
+        })
+        self.assertEqual(edited.status_code, 200)
+        self.assertEqual(edited.json()["rating"], 9.1)
+        self.assertEqual(edited.json()["completed_at"], "2026-06-02")
+        invalid = self.client.patch(f"/api/cards/{card['id']}/completion", json={"rating": 9.15})
+        self.assertEqual(invalid.status_code, 422)
+
+    def test_enrichment_prefers_external_description_and_records_provenance(self):
+        class MetadataStub:
+            def status(self): return {"book": {"available": True}}
+            def draft(self, category, external_id):
+                return CardDraft(category=category, title="外部书", source="openlibrary", external_id=external_id, description="来自 Open Library 的原始简介")
+
+        ai_payload = {"tags": ["经典"], "mood_fit": [], "energy_level": "medium", "description": "", "mode": "none", "basis": []}
+        ai = AIService(DeepSeekClient(DeepSeekConfig(api_key="test"), transport=lambda _: {"choices":[{"message":{"content":json.dumps(ai_payload, ensure_ascii=False)}}]}))
+        client = TestClient(create_app(self.db, metadata=MetadataStub(), ai=ai, static_dir=Path(self.temp.name) / "missing"))
+        card = client.post("/api/cards", json={"category":"book","title":"待补简介","source":"openlibrary","external_id":"OL1W"}).json()
+        enriched = client.post(f"/api/cards/{card['id']}/enrich")
+        self.assertEqual(enriched.status_code, 200)
+        self.assertEqual(enriched.json()["draft"]["description"], "来自 Open Library 的原始简介")
+        provenance = enriched.json()["draft"]["extension"]["description_provenance"]
+        self.assertEqual(provenance["mode"], "external")
+        self.assertEqual(provenance["source"], "openlibrary")
 
 
 if __name__ == "__main__": unittest.main()

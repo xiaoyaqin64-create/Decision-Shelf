@@ -67,4 +67,24 @@ describe('ShelfView', () => {
     expect(wrapper.text()).toContain('保存后的电影')
     expect(scrollTo).toHaveBeenCalledWith({ top: 420, left: 0, behavior: 'auto' })
   })
+
+  it('renders completed movies newest first and opens completion-first details', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
+    const completed = [
+      { ...card, id: 'older', title: '较早完成', status: 'completed' as const, completed_at: '2026-05-01', rating: 7.5, review: '旧感想' },
+      { ...card, id: 'newer', title: '最近完成', status: 'completed' as const, completed_at: '2026-06-20', rating: 9.3, review: '新感想', extension: { completed_at_inferred: true } },
+    ]
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ items: completed }) } as Response)
+    const router = makeRouter(); await router.push('/shelf/movie'); await router.isReady()
+    const wrapper = mount(ShelfView, { global: { plugins: [router], stubs: { DraftForm: true } } })
+    await flushPromises()
+    const artifacts = wrapper.findAll('.movie-archive')
+    expect(artifacts).toHaveLength(2)
+    expect(artifacts[0].text()).toContain('最近完成')
+    await artifacts[0].trigger('click'); await flushPromises()
+    expect(wrapper.find('.completion-hero').text()).toContain('9.3/10')
+    expect(wrapper.find('.completion-hero').text()).toContain('推定日期')
+    expect(wrapper.find('.completed-source-details').exists()).toBe(true)
+  })
 })

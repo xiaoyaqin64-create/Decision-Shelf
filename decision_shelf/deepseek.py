@@ -241,31 +241,94 @@ class AIService:
     def suggest_card_metadata(self, card: Card) -> dict[str, Any]:
         self.last_error = None
         allowed = GENRE_TAGS[card.category]
+        fact_keys = {
+            "movie": {"original_title", "director", "year", "country", "tmdb_rating"},
+            "book": {"author", "year", "pages"},
+            "album": {"artist", "year", "style"},
+            "game": set(),
+        }[card.category]
+        trusted_source = card.source in {"tmdb", "openlibrary", "musicbrainz"} and bool(card.external_id)
+        external_facts = {
+            key: value for key, value in card.extension.items()
+            if trusted_source and key in fact_keys and value not in (None, "", [], {})
+        }
+        needs_description = not card.description.strip()
+        description_mode = "evidence" if external_facts else "unverified"
         request = {
             "category": card.category_label, "title": card.title,
-            "description": card.description, "external_facts": card.extension,
+            "description": card.description, "external_facts": external_facts,
             "known_tags": card.tags, "existing_scenes": card.mood_fit, "notes": card.notes,
             "allowed_genres": allowed, "allowed_scenes": SCENE_TAGS,
-            "output": {"tags": ["从 allowed_genres 选择"], "mood_fit": ["从 allowed_scenes 选择"], "energy_level": "low|medium|high"},
+            "description_required": needs_description,
+            "description_mode": description_mode if needs_description else "none",
+            "output": {
+                "tags": ["从 allowed_genres 选择"],
+                "mood_fit": ["从 allowed_scenes 选择"],
+                "energy_level": "low|medium|high",
+                "description": "仅在 description_required=true 时返回",
+                "mode": "evidence|unverified|none",
+                "basis": ["仅列出实际使用的 external_facts 键名"],
+            },
         }
         last: DeepSeekError | None = None
         for attempt in range(2):
             try:
                 response = self.client.chat_json(
-                    system="你为决策卡片补充受控语义标签。不得编造事实字段，标签只能来自给定词表，只输出 JSON。",
-                    user=json.dumps(request, ensure_ascii=False) + ("\n上次没有产生可用字段，请纠正并返回非空标准标签。" if attempt else ""),
-                    max_tokens=350,
+                    system=(
+                        "你为个人收藏卡片补充受控标签和简介草稿，只输出 JSON。"
+                        "标签只能来自给定词表。已有简介非空时 description 必须为空且 mode=none。"
+                        "mode=evidence 时只能使用 external_facts 中明确给出的事实，不得增加人名、年份、数字、角色或情节，"
+                        "简介长度 40 到 160 个中文字符，basis 只能列出实际使用的 external_facts 键名。"
+                        "mode=unverified 时只能写 40 到 100 个中文字符的保守高层概述，不得写人名、年份、数字、结局或具体情节，basis 必须为空数组。"
+                        "不要把标签、场景或模型记忆伪装成已核验事实。"
+                    ),
+                    user=json.dumps(request, ensure_ascii=False) + ("\n上次结果不符合字段、长度或依据约束，请严格纠正。" if attempt else ""),
+                    max_tokens=650,
                 )
                 energy = response.get("energy_level")
                 tags = canonicalize(_safe_string_list(response.get("tags")), allowed)
                 moods = canonicalize(_safe_string_list(response.get("mood_fit")), SCENE_TAGS)
-                if not tags and not moods and (energy not in ENERGY_LEVELS or energy == card.energy_level):
+                description = ""
+                basis: list[str] = []
+                mode = "none"
+                if needs_description:
+                    description = str(response.get("description") or "").strip()
+                    mode = str(response.get("mode") or "").strip()
+                    basis = _safe_string_list(response.get("basis"))
+                    if mode != description_mode:
+                        raise DeepSeekError("DeepSeek 返回了错误的简介依据模式")
+                    minimum, maximum = (40, 160) if mode == "evidence" else (40, 100)
+                    if not minimum <= len(description) <= maximum:
+                        raise DeepSeekError(f"DeepSeek 简介长度必须在 {minimum}～{maximum} 字之间")
+                    if mode == "evidence" and (not basis or set(basis) - set(external_facts)):
+                        raise DeepSeekError("DeepSeek 返回了未提供的事实依据")
+                    if mode == "unverified" and (basis or any(char.isdigit() for char in description)):
+                        raise DeepSeekError("未核验简介包含了不允许的依据或数字")
+                if not description and not tags and not moods and (energy not in ENERGY_LEVELS or energy == card.energy_level):
                     raise DeepSeekError("DeepSeek 没有返回可用的新字段")
-                return {"tags": tags, "mood_fit": moods, "energy_level": energy if energy in ENERGY_LEVELS else card.energy_level, "source": "deepseek", "retried": bool(attempt)}
+                return {
+                    "tags": tags,
+                    "mood_fit": moods,
+                    "energy_level": energy if energy in ENERGY_LEVELS else card.energy_level,
+                    "description": description,
+                    "description_mode": mode,
+                    "description_basis": basis,
+                    "source": "deepseek",
+                    "retried": bool(attempt),
+                }
             except DeepSeekError as exc:
                 last = exc
         self.last_error = str(last or "AI 补全失败")
-        return {"tags": card.tags, "mood_fit": card.mood_fit, "energy_level": card.energy_level, "source": "local-fallback", "retried": True}
+        return {
+            "tags": card.tags,
+            "mood_fit": card.mood_fit,
+            "energy_level": card.energy_level,
+            "description": "",
+            "description_mode": "none",
+            "description_basis": [],
+            "source": "local-fallback",
+            "retried": True,
+        }
 
     def generate_exploration_candidates(
         self,

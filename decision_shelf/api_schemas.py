@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, validator
@@ -86,10 +87,29 @@ class CardUpdate(BaseModel):
 class ActionRequest(BaseModel):
     action: Literal["start", "complete", "skip", "not-today", "prioritize", "remove"]
     session_id: int | None = None
-    rating: int | None = Field(default=None, ge=1, le=5)
+    rating: float | None = Field(default=None, ge=0, le=10)
     review: str | None = None
+    completed_at: date | None = None
     final_minutes: int | None = Field(default=None, gt=0)
     time_note: str = ""
+
+    @validator("rating")
+    def one_decimal_rating(cls, value: float | None) -> float | None:
+        if value is not None and abs(value * 10 - round(value * 10)) > 1e-8:
+            raise ValueError("评分最多保留一位小数")
+        return value
+
+
+class CompletionUpdate(BaseModel):
+    completed_at: date | None = None
+    rating: float | None = Field(default=None, ge=0, le=10)
+    review: str | None = None
+
+    @validator("rating")
+    def one_decimal_rating(cls, value: float | None) -> float | None:
+        if value is not None and abs(value * 10 - round(value * 10)) > 1e-8:
+            raise ValueError("评分最多保留一位小数")
+        return value
 
 
 class DecisionRequest(BaseModel):

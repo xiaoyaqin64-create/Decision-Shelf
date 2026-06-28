@@ -38,6 +38,10 @@ class MigrationTestCase(unittest.TestCase):
                 """INSERT INTO cards(id,category,title,status,created_at,updated_at)
                    VALUES ('old','movie','旧卡片','todo','2026-01-01','2026-01-01')"""
             )
+            connection.execute(
+                """INSERT INTO cards(id,category,title,status,created_at,updated_at,rating)
+                   VALUES ('done','book','旧完成卡','completed','2026-02-01','2026-03-04',4)"""
+            )
             connection.commit()
             connection.close()
             db = Database(path)
@@ -51,7 +55,36 @@ class MigrationTestCase(unittest.TestCase):
             self.assertIn("normalized_title", columns)
             self.assertIn("theme_color", columns)
             self.assertIn("theme_color_source", columns)
-            self.assertEqual(version, "4")
+            self.assertIn("rating_score", columns)
+            self.assertEqual(version, "5")
+            completed = db.get_card("done")
+            self.assertEqual(completed.rating, 8.0)
+            self.assertEqual(completed.completed_at, "2026-03-04")
+            self.assertTrue(completed.extension["completed_at_inferred"])
+
+    def test_v4_ratings_and_interactions_are_scaled_to_ten_points(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "v4.db"
+            db = Database(path)
+            db.initialize()
+            with db.connect() as connection:
+                connection.execute(
+                    """INSERT INTO cards(id,category,title,normalized_title,status,created_at,updated_at,rating)
+                       VALUES ('rated','movie','旧评分','旧评分','completed','2026-01-01','2026-02-03',4)"""
+                )
+                connection.execute(
+                    """INSERT INTO interactions(card_id,action,created_at,rating)
+                       VALUES ('rated','complete','2026-02-03',3)"""
+                )
+                connection.execute("UPDATE cards SET rating_score=NULL WHERE id='rated'")
+                connection.execute("UPDATE interactions SET rating_score=NULL WHERE card_id='rated'")
+                connection.execute("UPDATE schema_meta SET value='4' WHERE key='version'")
+            db.initialize()
+            self.assertEqual(db.get_card("rated").rating, 8.0)
+            with db.connect() as connection:
+                score = connection.execute("SELECT rating_score FROM interactions WHERE card_id='rated'").fetchone()[0]
+            self.assertEqual(score, 6.0)
+            self.assertTrue(list(Path(folder).glob("v4.db.v4-*.bak")))
 
 
 if __name__ == "__main__": unittest.main()

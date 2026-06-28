@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from typing import Any, Callable
@@ -94,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument("id")
     action.add_argument("action", choices=ACTIONS)
     action.add_argument("--session-id", type=int)
-    action.add_argument("--rating", type=int, choices=range(1, 6))
+    action.add_argument("--rating", type=float)
     action.add_argument("--review")
 
     history = sub.add_parser("history", help="查看决策历史")
@@ -238,7 +239,7 @@ def _handle_action(database: Database, args: argparse.Namespace) -> None:
     rating = args.rating
     review = args.review
     if args.action == "complete" and rating is None and sys.stdin.isatty():
-        rating = _optional_int(input("评分 1～5（可留空）："), minimum=1, maximum=5)
+        rating = _optional_float(input("评分 0～10（可留空，最多一位小数）："), minimum=0, maximum=10)
         if review is None:
             review = input("感想（可留空）：").strip() or None
     card = FeedbackService(database).apply(
@@ -270,8 +271,8 @@ def _handle_history(database: Database, limit: int) -> None:
             print(f"  描述：{item['free_text']}")
         for interaction in item["interactions"]:
             detail = f"  结果：{interaction['action']} · {interaction['card_title']}"
-            if interaction["rating"]:
-                detail += f" · {interaction['rating']} 星"
+            if interaction["rating"] is not None:
+                detail += f" · {interaction['rating']:.1f}/10"
             print(detail)
             if interaction["review"]:
                 print(f"  反馈：{interaction['review']}")
@@ -472,8 +473,8 @@ def _print_card(card: Card) -> None:
     print(f"扩展字段：{json.dumps(card.extension, ensure_ascii=False)}")
     if card.notes:
         print(f"备注：{card.notes}")
-    if card.rating:
-        print(f"评分：{card.rating}")
+    if card.rating is not None:
+        print(f"评分：{card.rating:.1f}/10")
     if card.review:
         print(f"感想：{card.review}")
 
@@ -529,9 +530,24 @@ def _optional_int(value: str, *, minimum: int, maximum: int | None = None) -> in
     if not value.strip():
         return None
     parsed = _positive_int(value, "数值")
-    if parsed < minimum or (maximum is not None and parsed > maximum):
+    if not math.isfinite(parsed) or parsed < minimum or (maximum is not None and parsed > maximum):
         end = f"～{maximum}" if maximum is not None else "以上"
         raise ValueError(f"数值必须在 {minimum}{end}")
+    return parsed
+
+
+def _optional_float(value: str, *, minimum: float, maximum: float | None = None) -> float | None:
+    if not value.strip():
+        return None
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError("请输入数字") from exc
+    if parsed < minimum or (maximum is not None and parsed > maximum):
+        end = f"～{maximum:g}" if maximum is not None else "以上"
+        raise ValueError(f"数值必须在 {minimum:g}{end}")
+    if abs(parsed * 10 - round(parsed * 10)) > 1e-8:
+        raise ValueError("评分最多保留一位小数")
     return parsed
 
 

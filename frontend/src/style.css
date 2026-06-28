@@ -323,6 +323,73 @@ fieldset textarea { margin-top: 1rem; }
   .book-spine:hover,.book-spine:focus-visible { transform:none; }
 }
 
+/* Completed collections */
+.completed-collection { display:grid; gap:1.25rem; margin-bottom:2.2rem; }
+.completed-movie { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.completed-album,.completed-game { grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); }
+.completed-artifact { min-width:0; padding:0; border:0; color:var(--ink); background:transparent; text-align:left; border-radius:18px; }
+.completed-artifact:hover { transform:translateY(-5px); }
+.artifact-copy { min-width:0; padding:.8rem .2rem .2rem; }
+.artifact-title { margin:0 0 .35rem; white-space:normal; overflow-wrap:anywhere; word-break:break-word; line-height:1.35; }
+.artifact-visual { min-width:0; align-self:start; }
+.artifact-visual .artifact-title { margin:.7rem 0 0; padding:0 .2rem; }
+.artifact-copy time { display:block; color:var(--muted); font-size:.76rem; }
+.artifact-copy p { display:-webkit-box; margin:.5rem 0 0; color:var(--muted); font-size:.82rem; line-height:1.55; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+.movie-archive { display:block; padding:.7rem; background:linear-gradient(145deg,#251f1b,#46372d); color:#fff; box-shadow:0 14px 30px rgba(43,30,22,.22); }
+.movie-archive .artifact-copy { padding:.85rem .25rem .2rem; }
+.movie-archive .artifact-copy time,.movie-archive .artifact-copy p { color:rgba(255,255,255,.7); }
+.movie-poster { position:relative; aspect-ratio:2/3; overflow:hidden; border-radius:10px; background:linear-gradient(145deg,#725544,#2e2520); }
+.movie-poster img { width:100%; height:100%; object-fit:cover; display:block; }
+.movie-poster>span { width:100%; height:100%; display:grid; place-items:center; font-family:"Playfair Display","Noto Sans SC",serif; font-size:2rem; }
+.movie-poster b { position:absolute; right:.55rem; bottom:.55rem; padding:.32rem .52rem; border-radius:999px; background:rgba(15,12,10,.84); color:#f1d58d; font-size:.76rem; }
+
+.album-archive,.game-archive { display:grid; grid-template-columns:145px minmax(0,1fr); align-items:center; gap:.8rem; padding:1rem; background:rgba(255,255,255,.45); border:1px solid var(--line); box-shadow:0 10px 24px rgba(58,44,34,.09); }
+.vinyl-stage { position:relative; width:145px; height:126px; }
+.vinyl-disc { position:absolute; right:0; top:4px; width:118px; height:118px; border-radius:50%; background:repeating-radial-gradient(circle,#111 0 3px,#292929 4px 5px,#111 6px 8px); box-shadow:0 9px 16px rgba(0,0,0,.28); }
+.vinyl-disc::before { content:""; position:absolute; inset:42px; border-radius:50%; background:#b35c45; box-shadow:0 0 0 10px #d4b878,0 0 0 12px #171717; }
+.vinyl-disc i { position:absolute; inset:56px; z-index:2; border-radius:50%; background:#e8d9bb; }
+.album-sleeve { position:absolute; z-index:2; left:0; top:9px; width:108px; height:108px; overflow:hidden; display:grid; place-items:center; border-radius:4px; background:linear-gradient(145deg,#6b405d,#30283d); color:#fff; box-shadow:7px 9px 18px rgba(30,22,18,.28); }
+.album-sleeve img { width:100%; height:100%; object-fit:cover; }
+.album-sleeve i { font-style:normal; font-size:1.3rem; }
+
+.game-disc { position:relative; width:128px; height:128px; margin:auto; border-radius:50%; overflow:hidden; background:conic-gradient(from 20deg,#b9e8ef,#d7c3ed,#f5d9a5,#aedbd0,#d3c2eb,#b9e8ef); box-shadow:0 12px 20px rgba(37,41,50,.2),inset 0 0 0 2px rgba(255,255,255,.65); }
+.disc-rainbow { position:absolute; inset:4px; border-radius:50%; background:repeating-radial-gradient(circle,transparent 0 5px,rgba(255,255,255,.22) 6px,rgba(40,60,85,.08) 7px 9px); }
+.disc-label { position:absolute; inset:35px; display:grid; place-items:center; overflow:hidden; border-radius:50%; background:#294d67; color:white; box-shadow:0 0 0 8px rgba(255,255,255,.5); }
+.disc-label img { width:100%; height:100%; object-fit:cover; }
+.disc-label i { font-style:normal; }
+
+.completed-score { width:max-content; margin:0 0 .65rem; padding:.36rem .62rem; border:1px solid rgba(255,255,255,.3); border-radius:999px; color:#f0d38b; font-weight:800; }
+.completed-spine-copy small { font-size:.82rem; font-style:italic; }
+
+.completion-backdrop { z-index:80; }
+.completion-dialog { width:min(600px,92vw); }
+.completion-fields,.completion-edit-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.8rem; }
+.completion-hero { display:grid; grid-template-columns:150px minmax(0,1fr); gap:1.4rem; margin-bottom:1.2rem; padding:1rem; border-radius:18px; background:linear-gradient(145deg,rgba(113,79,57,.1),rgba(255,255,255,.35)); }
+.completion-cover { width:150px; aspect-ratio:2/3; overflow:hidden; display:grid; place-items:center; border-radius:9px; background:linear-gradient(145deg,var(--accent),#3b3029); color:#fff; font-size:1.7rem; box-shadow:0 12px 24px rgba(42,31,24,.2); }
+.completion-cover img { width:100%; height:100%; object-fit:cover; }
+.completion-record { align-self:center; }
+.completion-record>strong { display:block; margin:.5rem 0; font-family:"Playfair Display",serif; font-size:2.2rem; color:var(--accent); }
+.completion-record blockquote { margin:.8rem 0 0; color:var(--muted); font-size:1rem; line-height:1.7; }
+.completed-source-details { margin:1rem 0; padding:1rem; border:1px solid var(--line); border-radius:14px; }
+.completed-source-details summary { cursor:pointer; font-weight:700; }
+.description-provenance { width:max-content; max-width:100%; margin:.8rem 0; padding:.35rem .65rem; border-radius:999px; background:#eee2ca; color:#6d5437; font-size:.76rem; }
+
+@media (max-width:1040px) {
+  .completed-movie { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+
+@media (max-width:700px) {
+  .completed-movie { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+  .completed-album,.completed-game { grid-template-columns:1fr; }
+  .album-archive,.game-archive { grid-template-columns:120px minmax(0,1fr); padding:.8rem; }
+  .vinyl-stage { width:120px; transform:scale(.84); transform-origin:left center; }
+  .game-disc { width:108px; height:108px; }
+  .completion-hero { grid-template-columns:92px minmax(0,1fr); gap:1rem; }
+  .completion-cover { width:92px; }
+  .completion-record>strong { font-size:1.6rem; }
+}
+
 /* V3.2 — modern hardcovers on a full wooden bookcase */
 .shelf-layers { gap:2rem; }
 .shelf-layer { position:relative; height:250px; min-width:0; padding:0; isolation:isolate; overflow:visible; }

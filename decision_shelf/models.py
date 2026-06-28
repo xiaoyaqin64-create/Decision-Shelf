@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+import math
 from typing import Any
 
 
@@ -48,7 +49,7 @@ class Card:
     updated_at: str | None = None
     last_recommended_at: str | None = None
     completed_at: str | None = None
-    rating: int | None = None
+    rating: float | None = None
     review: str | None = None
 
     @property
@@ -74,6 +75,11 @@ class Card:
             raise ValueError("不支持的主题色来源")
         if not 1 <= self.priority <= 5:
             raise ValueError("优先级必须在 1～5 之间")
+        if self.rating is not None:
+            if not math.isfinite(self.rating) or not 0 <= self.rating <= 10:
+                raise ValueError("评分必须在 0～10 之间")
+            if abs(self.rating * 10 - round(self.rating * 10)) > 1e-8:
+                raise ValueError("评分最多保留一位小数")
         for value, name in (
             (self.duration_minutes, "总时长"),
             (self.min_session_minutes, "最小单次投入"),

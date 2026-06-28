@@ -13,4 +13,12 @@ describe('CardTile',()=>{
     await wrapper.trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
   })
+
+  it('shows completion date, ten-point score and review for completed books',()=>{
+    const card:any={id:'b1',category:'book',title:'完成之书',status:'completed',image_url:null,theme_color:'#334455',tags:['经典'],mood_fit:['沉浸'],description:'不应展示的简介',is_prioritized:false,completed_at:'2026-06-18',rating:8.6,review:'读完之后仍有余味'}
+    const wrapper=mount(CardTile,{props:{card}})
+    expect(wrapper.find('.completed-spine-copy').text()).toContain('8.6/10')
+    expect(wrapper.find('.completed-spine-copy').text()).toContain('读完之后仍有余味')
+    expect(wrapper.find('.completed-spine-copy').text()).not.toContain('不应展示的简介')
+  })
 })

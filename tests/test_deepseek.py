@@ -138,6 +138,35 @@ class DeepSeekTestCase(unittest.TestCase):
         self.assertEqual(candidates[0].explanation, "第一条理由")
         self.assertEqual(candidates[1].explanation, "")
 
+    def test_unverified_description_is_conservative_and_auditable(self) -> None:
+        description = "这是一部围绕个人选择与内心变化展开的作品，整体侧重情绪体验、关系观察与成长思考，适合希望从内容中获得共鸣与余味的人。"
+        payload = {"tags": [], "mood_fit": [], "energy_level": "medium", "description": description, "mode": "unverified", "basis": []}
+        service = AIService(DeepSeekClient(DeepSeekConfig(api_key="test"), transport=lambda _: response(json.dumps(payload, ensure_ascii=False))))
+        result = service.suggest_card_metadata(Card("manual", "book", "未知作品"))
+        self.assertEqual(result["description"], description)
+        self.assertEqual(result["description_mode"], "unverified")
+        self.assertEqual(result["description_basis"], [])
+
+    def test_evidence_description_rejects_unknown_basis(self) -> None:
+        valid_description = "这部作品依据已核验的作者与出版信息进行概述，聚焦作品的基本定位与阅读方向，不额外扩展未提供的人物、事件或具体情节。"
+        responses = iter([
+            {"description": valid_description, "mode": "evidence", "basis": ["publisher"], "tags": [], "mood_fit": []},
+            {"description": valid_description, "mode": "evidence", "basis": ["author"], "tags": [], "mood_fit": []},
+        ])
+        service = AIService(DeepSeekClient(DeepSeekConfig(api_key="test"), transport=lambda _: response(json.dumps(next(responses), ensure_ascii=False))))
+        card = Card("verified", "book", "有依据作品", source="openlibrary", external_id="OL1W", extension={"author": "某作者"})
+        result = service.suggest_card_metadata(card)
+        self.assertEqual(result["description_mode"], "evidence")
+        self.assertEqual(result["description_basis"], ["author"])
+        self.assertTrue(result["retried"])
+
+    def test_existing_description_is_never_replaced(self) -> None:
+        payload = {"tags": ["科幻"], "mood_fit": [], "energy_level": "medium", "description": "模型试图覆盖", "mode": "none", "basis": []}
+        service = AIService(DeepSeekClient(DeepSeekConfig(api_key="test"), transport=lambda _: response(json.dumps(payload, ensure_ascii=False))))
+        result = service.suggest_card_metadata(Card("existing", "movie", "已有简介", description="保留这段简介"))
+        self.assertEqual(result["description"], "")
+        self.assertEqual(result["description_mode"], "none")
+
 
 if __name__ == "__main__":
     unittest.main()

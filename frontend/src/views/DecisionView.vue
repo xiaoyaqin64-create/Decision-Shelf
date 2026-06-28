@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
+import CompletionDialog from '../components/CompletionDialog.vue'
 import DraftForm from '../components/DraftForm.vue'
 import type { CardDraft, Category, DecisionResponse, ExplorationSuggestion, Taxonomy } from '../types'
 
@@ -9,6 +10,8 @@ const error = ref('')
 const result = ref<DecisionResponse | null>(null)
 const editing = ref<ExplorationSuggestion | null>(null)
 const editedDraft = ref<CardDraft | null>(null)
+const showCompletion = ref(false)
+const completionSaving = ref(false)
 const categories = ref<Category[]>(['movie', 'book', 'album', 'game'])
 const genrePreferences = ref<string[]>([])
 const moods = ref<string[]>([])
@@ -31,10 +34,20 @@ async function decide() {
 
 async function shelfAction(action: string) {
   if (!result.value?.shelf_recommendation) return
+  if (action === 'complete') { showCompletion.value = true; return }
   const extra: Record<string, unknown> = { session_id: result.value.session_id }
-  if (action === 'complete') { const rating = window.prompt('评分 1～5'); const review = window.prompt('感想'); if (rating) extra.rating = Number(rating); if (review) extra.review = review }
   await api.action(result.value.shelf_recommendation.card_id, action, extra)
   await decide()
+}
+
+async function complete(payload: { completed_at: string; rating: number | null; review: string | null; final_minutes?: number }) {
+  if (!result.value?.shelf_recommendation) return
+  completionSaving.value = true
+  try {
+    await api.action(result.value.shelf_recommendation.card_id, 'complete', { ...payload, session_id: result.value.session_id })
+    showCompletion.value = false
+    await decide()
+  } catch (e) { error.value = (e as Error).message } finally { completionSaving.value = false }
 }
 
 function openEdit(item: ExplorationSuggestion) { editing.value = item; editedDraft.value = JSON.parse(JSON.stringify(item.draft)) }
@@ -64,7 +77,7 @@ onMounted(async()=>{try{const loaded=await api.taxonomy();if(loaded?.genres&&Arr
     <p v-if="error" class="error-box">{{ error }}</p>
 
     <section v-if="result" class="decision-results">
-      <div v-if="result.shelf_recommendation" class="recommendation primary-recommendation"><p class="eyebrow">来自我的书架</p><div class="score-ring">{{ Math.round(result.shelf_recommendation.fit_score) }}</div><h2>{{ result.shelf_recommendation.title }}</h2><p>{{ result.shelf_recommendation.explanation }}</p><small>综合 {{ result.shelf_recommendation.total_score }} 分 · 当前有 {{ result.eligible_count }} 张可选</small><div class="recommend-actions"><button @click="shelfAction('start')">现在开始</button><button class="quiet" @click="shelfAction('not-today')">今天不想</button><button class="quiet" @click="shelfAction('skip')">换下次</button></div></div>
+      <div v-if="result.shelf_recommendation" class="recommendation primary-recommendation"><p class="eyebrow">来自我的书架</p><div class="score-ring">{{ Math.round(result.shelf_recommendation.fit_score) }}</div><h2>{{ result.shelf_recommendation.title }}</h2><p>{{ result.shelf_recommendation.explanation }}</p><small>综合 {{ result.shelf_recommendation.total_score }} 分 · 当前有 {{ result.eligible_count }} 张可选</small><div class="recommend-actions"><button @click="shelfAction('start')">现在开始</button><button class="quiet" @click="shelfAction('complete')">已经完成</button><button class="quiet" @click="shelfAction('not-today')">今天不想</button><button class="quiet" @click="shelfAction('skip')">换下次</button></div></div>
       <div v-if="result.fallback_reason" class="explore-intro"><p class="eyebrow">书架之外</p><h2>{{ result.fallback_reason === 'low_count' ? '书架候选有点少，看看新的可能' : '现有内容和此刻不够匹配' }}</h2></div>
       <div v-if="result.exploration_error" class="warning-box">AI 探索暂不可用：{{ result.exploration_error }}</div>
       <p v-if="result.exploration_suggestions.length&&result.exploration_suggestions[0].fit_score<60" class="warning-box">当前没有高度匹配的探索内容，以下仍是完整候选集中相对最合适的结果。</p>
@@ -74,4 +87,5 @@ onMounted(async()=>{try{const loaded=await api.taxonomy();if(loaded?.genres&&Arr
   </section>
 
   <div v-if="editing && editedDraft" class="modal-backdrop" @click.self="editing=null"><section class="modal panel"><div class="modal-head"><h2>确认《{{ editing.draft.title }}》</h2><button class="icon" @click="editing=null">×</button></div><p v-if="!editing.verified" class="warning-box">游戏尚未接入外部验证，请确认标题和时长后再继续。</p><DraftForm v-model="editedDraft" /><div class="modal-actions"><button class="quiet" @click="editing=null">取消</button><button class="quiet" @click="resolve(editing,'add',editedDraft)">加入书架</button><button class="quiet" @click="resolve(editing,'complete',editedDraft)">已经完成</button><button @click="resolve(editing,'start',editedDraft)">立即开始</button></div></section></div>
+  <CompletionDialog v-if="showCompletion&&result?.shelf_recommendation" :title="result.shelf_recommendation.title" :include-minutes="['book','game'].includes(result.shelf_recommendation.category)" :saving="completionSaving" @cancel="showCompletion=false" @submit="complete" />
 </template>

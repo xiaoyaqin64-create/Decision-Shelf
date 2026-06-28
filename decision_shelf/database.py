@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS cards (
     last_recommended_at TEXT,
     completed_at TEXT,
     rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+    rating_score REAL CHECK (rating_score BETWEEN 0 AND 10),
     review TEXT
 );
 
@@ -92,6 +93,7 @@ CREATE TABLE IF NOT EXISTS interactions (
     created_at TEXT NOT NULL,
     decision_session_id INTEGER,
     rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+    rating_score REAL CHECK (rating_score BETWEEN 0 AND 10),
     review TEXT,
     payload_json TEXT NOT NULL DEFAULT '{}',
     FOREIGN KEY (card_id) REFERENCES cards(id),
@@ -155,6 +157,8 @@ CREATE TABLE IF NOT EXISTS ai_enrichment_logs (
     added_tags_json TEXT NOT NULL DEFAULT '[]',
     added_moods_json TEXT NOT NULL DEFAULT '[]',
     retried INTEGER NOT NULL DEFAULT 0,
+    description_added INTEGER NOT NULL DEFAULT 0,
+    description_mode TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY(card_id) REFERENCES cards(id) ON DELETE SET NULL
 );
@@ -198,9 +202,11 @@ class Database:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
             self._ensure_v4(connection)
+            self._ensure_v5(connection)
+            connection.commit()
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(
-                "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('version', '4')"
+                "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('version', '5')"
             )
 
     def _backup_before_migration(self) -> Path | None:
@@ -215,7 +221,7 @@ class Database:
             version = int(row[0]) if row else 1
         except (sqlite3.Error, ValueError):
             version = 1
-        if version >= 4:
+        if version >= 5:
             return None
         timestamp = iso_now().replace(":", "-")
         backup = self.path.with_name(f"{self.path.name}.v{version}-{timestamp}.bak")
@@ -312,6 +318,38 @@ class Database:
                     else: connection.execute("UPDATE decision_candidates SET card_id=? WHERE session_id=? AND card_id=?", (keep, item["session_id"], old))
                 connection.execute("DELETE FROM cards WHERE id=?", (old,))
 
+    @staticmethod
+    def _ensure_v5(connection: sqlite3.Connection) -> None:
+        additions = {
+            "cards": {"rating_score": "REAL CHECK(rating_score BETWEEN 0 AND 10)"},
+            "interactions": {"rating_score": "REAL CHECK(rating_score BETWEEN 0 AND 10)"},
+            "ai_enrichment_logs": {
+                "description_added": "INTEGER NOT NULL DEFAULT 0",
+                "description_mode": "TEXT",
+            },
+        }
+        for table, columns in additions.items():
+            existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+            for name, definition in columns.items():
+                if name not in existing:
+                    connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        connection.execute(
+            "UPDATE cards SET rating_score=rating*2.0 WHERE rating_score IS NULL AND rating IS NOT NULL"
+        )
+        connection.execute(
+            "UPDATE interactions SET rating_score=rating*2.0 WHERE rating_score IS NULL AND rating IS NOT NULL"
+        )
+        rows = connection.execute(
+            "SELECT id,updated_at,extension_json FROM cards WHERE status='completed' AND completed_at IS NULL"
+        ).fetchall()
+        for row in rows:
+            extension = json_loads(row["extension_json"], {})
+            extension["completed_at_inferred"] = True
+            connection.execute(
+                "UPDATE cards SET completed_at=?,extension_json=? WHERE id=?",
+                (row["updated_at"], json_dumps(extension), row["id"]),
+            )
+
     def add_card(self, card: Card, *, replace: bool = False) -> None:
         card.validate()
         timestamp = iso_now()
@@ -325,7 +363,7 @@ class Database:
                     tags_json, energy_level, mood_fit_json, source, external_id,
                     description, image_url, theme_color, theme_color_source, notes, priority,
                     is_prioritized, extension_json, created_at, updated_at,
-                    last_recommended_at, completed_at, rating, review
+                    last_recommended_at, completed_at, rating_score, review
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 self._card_values(card),
             )
@@ -344,7 +382,7 @@ class Database:
                     tags_json=?, energy_level=?, mood_fit_json=?, source=?, notes=?, priority=?,
                     external_id=?, description=?, image_url=?, theme_color=?, theme_color_source=?, is_prioritized=?,
                     extension_json=?, updated_at=?, last_recommended_at=?,
-                    completed_at=?, rating=?, review=? WHERE id=?""",
+                    completed_at=?, rating_score=?, review=? WHERE id=?""",
                 (
                     card.category,
                     card.title,
@@ -497,10 +535,10 @@ class Database:
             cursor = connection.execute("DELETE FROM activity_sessions WHERE id=?", (entry_id,))
             if not cursor.rowcount: raise KeyError(f"没有找到时间记录：{entry_id}")
 
-    def log_enrichment(self, *, card_id: str | None, category: str, title: str, status: str, model: str | None, error: str | None, added_tags: list[str], added_moods: list[str], retried: bool) -> None:
+    def log_enrichment(self, *, card_id: str | None, category: str, title: str, status: str, model: str | None, error: str | None, added_tags: list[str], added_moods: list[str], retried: bool, description_added: bool = False, description_mode: str | None = None) -> None:
         with self.connect() as connection:
-            connection.execute("""INSERT INTO ai_enrichment_logs(card_id,category,title,status,model,error,added_tags_json,added_moods_json,retried,created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)""", (card_id, category, title, status, model, error, json_dumps(added_tags), json_dumps(added_moods), int(retried), iso_now()))
+            connection.execute("""INSERT INTO ai_enrichment_logs(card_id,category,title,status,model,error,added_tags_json,added_moods_json,retried,description_added,description_mode,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (card_id, category, title, status, model, error, json_dumps(added_tags), json_dumps(added_moods), int(retried), int(description_added), description_mode, iso_now()))
 
     def has_interaction_since(self, card_id: str, action: str, since_iso: str) -> bool:
         with self.connect() as connection:
@@ -526,7 +564,7 @@ class Database:
         action: str,
         *,
         session_id: int | None = None,
-        rating: int | None = None,
+        rating: float | None = None,
         review: str | None = None,
         payload: dict[str, Any] | None = None,
         created_at: str | None = None,
@@ -534,7 +572,7 @@ class Database:
         with self.connect() as connection:
             cursor = connection.execute(
                 """INSERT INTO interactions (
-                    card_id, action, created_at, decision_session_id, rating, review, payload_json
+                    card_id, action, created_at, decision_session_id, rating_score, review, payload_json
                 ) VALUES (?,?,?,?,?,?,?)""",
                 (
                     card_id,
@@ -674,9 +712,11 @@ class Database:
                     session_ids,
                 ).fetchall()
                 for interaction in interaction_rows:
+                    item = dict(interaction)
+                    item["rating"] = interaction["rating_score"]
                     interaction_map[interaction["decision_session_id"]].append(
                         {
-                            **dict(interaction),
+                            **item,
                             "payload": json_loads(interaction["payload_json"], {}),
                         }
                     )
@@ -887,6 +927,6 @@ class Database:
             updated_at=row["updated_at"],
             last_recommended_at=row["last_recommended_at"],
             completed_at=row["completed_at"],
-            rating=row["rating"],
+            rating=row["rating_score"] if "rating_score" in row.keys() else (row["rating"] * 2.0 if row["rating"] is not None else None),
             review=row["review"],
         )

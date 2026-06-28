@@ -20,6 +20,7 @@ from .api_schemas import (
     CardImportPreviewRequest,
     CardImportRequest,
     CardUpdate,
+    CompletionUpdate,
     DecisionRequest,
     EnrichRequest,
     ExplorationResolveRequest,
@@ -32,7 +33,7 @@ from .deepseek import AIService
 from .engine import FeedbackService
 from .metadata import MetadataError, MetadataService, ProviderRegistry
 from .models import CardDraft, DecisionContext
-from .utils import make_card_id, normalize_terms
+from .utils import make_card_id, normalize_terms, now_local
 from .taxonomy import GENRE_TAGS, SCENE_TAGS, canonicalize, taxonomy_payload
 from .workflows import DecisionWorkflow
 from .theme_color import ThemeColorService
@@ -144,6 +145,8 @@ def create_app(
         draft = CardDraft(**draft_data)
         card = draft.to_card(make_card_id(draft.category, draft.title))
         card.status = payload.status
+        if card.status == "completed" and not card.completed_at:
+            card.completed_at = now_local().isoformat(timespec="seconds")
         card, outcome = db.upsert_card(card)
         return {**_card_payload(card), "upsert_result": outcome}
 
@@ -225,10 +228,33 @@ def create_app(
         card = db.get_card(card_id)
         if card is None:
             raise KeyError(f"没有找到卡片：{card_id}")
+        previous_status = card.status
         for field_name in payload.__fields_set__:
             value = getattr(payload, field_name)
             if value is not None:
                 setattr(card, field_name, value)
+        if previous_status != "completed" and card.status == "completed" and not card.completed_at:
+            card.completed_at = now_local().isoformat(timespec="seconds")
+            card.extension.pop("completed_at_inferred", None)
+        db.update_card(card)
+        return _card_payload(card)
+
+    @app.patch("/api/cards/{card_id}/completion")
+    def update_completion(card_id: str, payload: CompletionUpdate):
+        card = db.get_card(card_id)
+        if card is None:
+            raise KeyError(f"没有找到卡片：{card_id}")
+        if card.status != "completed":
+            raise ValueError("只有已完成卡片可以修改完成记录")
+        if "completed_at" in payload.__fields_set__:
+            if payload.completed_at is None:
+                raise ValueError("完成日期不能为空")
+            card.completed_at = payload.completed_at.isoformat()
+            card.extension.pop("completed_at_inferred", None)
+        if "rating" in payload.__fields_set__:
+            card.rating = payload.rating
+        if "review" in payload.__fields_set__:
+            card.review = payload.review.strip() if payload.review else None
         db.update_card(card)
         return _card_payload(card)
 
@@ -270,6 +296,7 @@ def create_app(
             session_id=payload.session_id,
             rating=payload.rating,
             review=payload.review,
+            completed_at=payload.completed_at.isoformat() if payload.completed_at else None,
         )
         return _card_payload(card)
 
@@ -356,19 +383,45 @@ def create_app(
         return _enrich(draft, card_id)
 
     def _enrich(draft: CardDraft, card_id: str | None):
+        description_source = None
+        if not draft.description.strip() and draft.external_id and draft.source in {"tmdb", "openlibrary", "musicbrainz"}:
+            try:
+                external = metadata_service.draft(draft.category, draft.external_id)
+                if external.description.strip():
+                    draft.description = external.description.strip()
+                    description_source = f"external:{draft.source}"
+                    draft.extension["description_provenance"] = {
+                        "source": draft.source,
+                        "mode": "external",
+                        "generated_at": now_local().isoformat(timespec="seconds"),
+                    }
+            except MetadataError:
+                # 外部简介不可用时继续进入明确标记的 AI 草稿流程。
+                pass
         temp = draft.to_card(card_id or make_card_id(draft.category, draft.title))
         suggestion = ai_service.suggest_card_metadata(temp)
         old_tags, old_moods = set(draft.tags), set(draft.mood_fit)
         draft.tags = canonicalize([*draft.tags, *suggestion["tags"]], GENRE_TAGS[draft.category])
         draft.mood_fit = canonicalize([*draft.mood_fit, *suggestion["mood_fit"]], SCENE_TAGS)
         draft.energy_level = suggestion["energy_level"]
+        if not draft.description.strip() and suggestion.get("description"):
+            draft.description = suggestion["description"]
+            description_source = f"deepseek:{suggestion['description_mode']}"
+            draft.extension["description_provenance"] = {
+                "source": "deepseek",
+                "mode": suggestion["description_mode"],
+                "basis": suggestion.get("description_basis", []),
+                "model": ai_service.client.config.model,
+                "generated_at": now_local().isoformat(timespec="seconds"),
+            }
         added_tags = [item for item in draft.tags if item not in old_tags]
         added_moods = [item for item in draft.mood_fit if item not in old_moods]
         db.log_enrichment(card_id=card_id, category=draft.category, title=draft.title,
-            status="success" if suggestion["source"] == "deepseek" else "error",
+            status="success" if suggestion["source"] == "deepseek" else ("partial" if description_source else "error"),
             model=ai_service.client.config.model, error=ai_service.last_error,
-            added_tags=added_tags, added_moods=added_moods, retried=bool(suggestion.get("retried")))
-        return {"draft": asdict(draft), "source": suggestion["source"], "warning": ai_service.last_error, "retried": bool(suggestion.get("retried"))}
+            added_tags=added_tags, added_moods=added_moods, retried=bool(suggestion.get("retried")),
+            description_added=bool(description_source), description_mode=description_source)
+        return {"draft": asdict(draft), "source": suggestion["source"], "warning": ai_service.last_error, "retried": bool(suggestion.get("retried")), "description_source": description_source}
 
     resolved_static = Path(static_dir) if static_dir else Path(__file__).resolve().parent.parent / "frontend" / "dist"
     if resolved_static.exists():

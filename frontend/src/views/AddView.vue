@@ -46,7 +46,15 @@ async function enrich() {
   try {
     const response = await api.enrich(draft.value)
     draft.value = response.draft
-    message.value = response.warning ? `已保留原字段：${response.warning}` : 'DeepSeek 已补充适合场景与语义标签。'
+    message.value = response.warning
+      ? `${response.description_source ? '简介已补充；' : ''}AI 标签补全未完成：${response.warning}`
+      : response.description_source?.startsWith('external:')
+        ? '已从外部来源补充简介，并保留来源记录。'
+        : response.description_source === 'deepseek:evidence'
+          ? 'AI 已生成有依据的简介草稿，请检查后保存。'
+          : response.description_source === 'deepseek:unverified'
+            ? 'AI 已生成未核验的保守简介草稿，请务必检查后保存。'
+            : 'DeepSeek 已补充适合场景与语义标签。'
   } catch (e) { error.value = (e as Error).message } finally { loading.value = false }
 }
 

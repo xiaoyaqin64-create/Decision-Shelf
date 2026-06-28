@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from datetime import datetime, timedelta
 
 from .database import Database
@@ -113,17 +114,17 @@ class DecisionEngine:
 class FeedbackService:
     def __init__(self, database: Database): self.database = database
 
-    def apply(self, card_id: str, action: str, *, session_id: int | None = None, rating: int | None = None, review: str | None = None) -> Card:
+    def apply(self, card_id: str, action: str, *, session_id: int | None = None, rating: float | None = None, review: str | None = None, completed_at: str | None = None) -> Card:
         card = self.database.get_card(card_id)
         if card is None: raise KeyError(f"没有找到卡片：{card_id}")
         if action not in {"start", "complete", "skip", "not-today", "prioritize", "remove"}: raise ValueError(f"不支持的操作：{action}")
-        if rating is not None and not 1 <= rating <= 5: raise ValueError("评分必须在 1～5 之间")
+        if rating is not None and (not math.isfinite(rating) or not 0 <= rating <= 10 or abs(rating * 10 - round(rating * 10)) > 1e-8): raise ValueError("评分必须在 0～10 之间且最多保留一位小数")
         timestamp = now_local().isoformat(timespec="seconds")
         if action == "start":
             card.status = "in_progress"; self._learn(card, .1, .05, .05)
         elif action == "complete":
-            card.status = "completed"; card.completed_at = timestamp; card.rating = rating; card.review = review; card.is_prioritized = False
-            multiplier = 1.75 if rating and rating >= 4 else (-.75 if rating and rating <= 2 else 1.0)
+            card.status = "completed"; card.completed_at = completed_at or timestamp; card.rating = rating; card.review = review; card.is_prioritized = False
+            multiplier = 1.75 if rating is not None and rating >= 8 else (-.75 if rating is not None and rating <= 4 else 1.0)
             self._learn(card, .4 * multiplier, .25 * multiplier, .2 * multiplier)
         elif action == "prioritize": card.is_prioritized = True
         elif action == "remove": card.status = "removed"
