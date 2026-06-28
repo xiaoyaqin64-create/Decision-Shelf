@@ -1,4 +1,4 @@
-import type { Card, CardDraft, DecisionResponse, MetadataCandidate, Taxonomy, TimeEntry } from './types'
+import type { Card, CardDraft, CardImportPreview, CardImportResult, DecisionResponse, MetadataCandidate, Taxonomy, TimeEntry } from './types'
 
 export class ApiError extends Error {
   code: string
@@ -29,6 +29,8 @@ export const api = {
   cards: (params = '') => request<{ items: Card[] }>(`/api/cards${params}`),
   resolveThemeColors: (cardIds: string[]) => request<{items:Array<{id:string;theme_color:string;source:string;resolved:boolean}>}>('/api/cards/theme-colors/resolve', { method: 'POST', body: JSON.stringify({ card_ids: cardIds }) }),
   createCard: (draft: CardDraft) => request<Card>('/api/cards', { method: 'POST', body: JSON.stringify(draft) }),
+  previewCardImport: (filename: string, content: string) => request<CardImportPreview>('/api/cards/import/preview', { method: 'POST', body: JSON.stringify({ filename, content }) }),
+  importCards: (items: Array<{ row_number: number; draft: CardDraft }>) => request<CardImportResult>('/api/cards/import', { method: 'POST', body: JSON.stringify({ items }) }),
   updateCard: (id: string, patch: Partial<Card>) => request<Card>(`/api/cards/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   enrichCard: (id: string) => request<{ draft: CardDraft; source: string; warning: string | null; retried: boolean }>(`/api/cards/${id}/enrich`, { method: 'POST' }),
   recycleCard: (id: string) => request<Card>(`/api/cards/${id}`, { method: 'DELETE' }),

@@ -139,3 +139,17 @@ class TimeEntryRequest(BaseModel):
 
 class ThemeColorResolveRequest(BaseModel):
     card_ids: list[str] = Field(min_items=1, max_items=20)
+
+
+class CardImportPreviewRequest(BaseModel):
+    filename: str
+    content: str = Field(max_length=262144)
+
+
+class CardImportItem(BaseModel):
+    row_number: int = Field(ge=2)
+    draft: CardDraftSchema
+
+
+class CardImportRequest(BaseModel):
+    items: list[CardImportItem] = Field(min_items=1, max_items=50)

@@ -17,6 +17,8 @@ from .api_schemas import (
     ActionRequest,
     CardCreate,
     CardDraftSchema,
+    CardImportPreviewRequest,
+    CardImportRequest,
     CardUpdate,
     DecisionRequest,
     EnrichRequest,
@@ -25,6 +27,7 @@ from .api_schemas import (
     ThemeColorResolveRequest,
 )
 from .database import Database
+from .csv_import import preview_csv_import
 from .deepseek import AIService
 from .engine import FeedbackService
 from .metadata import MetadataError, MetadataService, ProviderRegistry
@@ -143,6 +146,62 @@ def create_app(
         card.status = payload.status
         card, outcome = db.upsert_card(card)
         return {**_card_payload(card), "upsert_result": outcome}
+
+    @app.post("/api/cards/import/preview")
+    def preview_card_import(payload: CardImportPreviewRequest):
+        if not payload.filename.casefold().endswith(".csv"):
+            raise ValueError("请选择 .csv 文件")
+        return preview_csv_import(payload.content, db)
+
+    @app.post("/api/cards/import")
+    def import_cards(payload: CardImportRequest):
+        results = []
+        for item in payload.items:
+            draft = _draft_from_schema(item.draft)
+            existing = (
+                db.find_by_external(draft.source, draft.external_id)
+                if draft.external_id
+                else None
+            ) or db.find_by_title(draft.category, draft.title)
+            if existing:
+                results.append({
+                    "row_number": item.row_number,
+                    "status": "skipped_duplicate",
+                    "card": _card_payload(existing),
+                    "message": "书架中已存在该卡片",
+                })
+                continue
+            try:
+                card = draft.to_card(make_card_id(draft.category, draft.title))
+                db.add_card(card)
+                results.append({
+                    "row_number": item.row_number,
+                    "status": "created",
+                    "card": _card_payload(card),
+                    "message": "",
+                })
+            except sqlite3.IntegrityError:
+                results.append({
+                    "row_number": item.row_number,
+                    "status": "skipped_duplicate",
+                    "card": None,
+                    "message": "导入时发现重复卡片",
+                })
+            except ValueError as exc:
+                results.append({
+                    "row_number": item.row_number,
+                    "status": "failed",
+                    "card": None,
+                    "message": str(exc),
+                })
+        return {
+            "items": results,
+            "summary": {
+                "created": sum(item["status"] == "created" for item in results),
+                "skipped": sum(item["status"] == "skipped_duplicate" for item in results),
+                "failed": sum(item["status"] == "failed" for item in results),
+            },
+        }
 
     @app.post("/api/cards/theme-colors/resolve")
     def resolve_theme_colors(payload: ThemeColorResolveRequest):

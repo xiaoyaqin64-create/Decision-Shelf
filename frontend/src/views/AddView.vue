@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { api } from '../api'
+import BatchImport from '../components/BatchImport.vue'
 import DraftForm from '../components/DraftForm.vue'
 import type { CardDraft, Category, MetadataCandidate } from '../types'
 
@@ -12,6 +13,7 @@ const loading = ref(false)
 const message = ref('')
 const error = ref('')
 const config = ref<any>(null)
+const mode = ref<'single' | 'batch'>('single')
 let timer: number | undefined
 
 function blankDraft(cat: Category): CardDraft {
@@ -60,7 +62,12 @@ onMounted(async () => { try { config.value = await api.config() } catch { /* opt
 
 <template>
   <section class="page narrow">
-    <div class="hero"><div><p class="eyebrow">ADD TO SHELF</p><h1>把想看的，轻松放进来</h1><p>只输入标题，外部数据源负责事实信息，DeepSeek 负责“什么时候适合它”。</p></div></div>
+    <div class="hero"><div><p class="eyebrow">ADD TO SHELF</p><h1>把想看的，轻松放进来</h1><p>一张张确认，或一次整理一批；外部数据源可以帮你补全事实信息。</p></div></div>
+    <div class="segmented add-mode-switch" role="tablist">
+      <button :class="{active:mode==='single'}" role="tab" @click="mode='single'">单张添加</button>
+      <button :class="{active:mode==='batch'}" role="tab" @click="mode='batch'">批量导入</button>
+    </div>
+    <template v-if="mode === 'single'">
     <div class="step-card panel">
       <div class="step-number">1</div><div class="step-content"><h2>选择类型并搜索</h2>
         <div class="segmented"><button v-for="item in [{k:'movie',v:'电影'},{k:'book',v:'书籍'},{k:'album',v:'专辑'},{k:'game',v:'游戏'}]" :key="item.k" :class="{active:category===item.k}" @click="category=item.k as Category">{{ item.v }}</button></div>
@@ -74,5 +81,7 @@ onMounted(async () => { try { config.value = await api.config() } catch { /* opt
 
     <div v-if="draft" class="step-card panel"><div class="step-number">2</div><div class="step-content"><div class="section-heading"><h2>确认并编辑卡片</h2><span v-if="draft.source !== 'manual'" class="verified">已匹配 {{ draft.source }}</span></div><DraftForm v-model="draft" /><div class="form-actions"><button class="quiet" :disabled="loading" @click="enrich">✨ AI 补充场景标签</button><button :disabled="loading || !draft.title" @click="save">保存到书架</button></div></div></div>
     <p v-if="message" class="success-box">{{ message }}</p><p v-if="error" class="error-box">{{ error }}</p>
+    </template>
+    <BatchImport v-else :config="config" />
   </section>
 </template>

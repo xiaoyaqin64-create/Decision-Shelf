@@ -70,6 +70,32 @@ export interface ExplorationSuggestion {
 export interface Taxonomy { genres: Record<Category, string[]>; scenes: string[] }
 export interface TimeEntry { id: number; card_id: string; minutes: number; note: string; recorded_at: string }
 
+export interface CardImportPreviewRow {
+  row_number: number
+  raw: Record<string, string>
+  draft: CardDraft | null
+  provided_fields: Array<keyof CardDraft>
+  status: 'valid' | 'duplicate' | 'invalid'
+  errors: string[]
+  existing_card: Pick<Card, 'id' | 'title' | 'category' | 'status'> | null
+}
+
+export interface CardImportPreview {
+  rows: CardImportPreviewRow[]
+  summary: { total: number; valid: number; duplicate: number; invalid: number }
+  warnings: string[]
+}
+
+export interface CardImportResult {
+  items: Array<{
+    row_number: number
+    status: 'created' | 'skipped_duplicate' | 'failed'
+    card: Card | null
+    message: string
+  }>
+  summary: { created: number; skipped: number; failed: number }
+}
+
 export interface DecisionResponse {
   session_id: number
   scope: 'shelf_only' | 'shelf_first' | 'free'
