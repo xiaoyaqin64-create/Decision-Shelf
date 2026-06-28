@@ -28,7 +28,7 @@ MUSICBRAINZ_CONTACT=你的联系邮箱或网址
 首次安装和构建：
 
 ```powershell
-cd "C:\Users\覃筱雅\Documents\Decision Shelf"
+cd "..."
 python -m pip install -e .
 cd frontend
 npm.cmd install
