@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -38,6 +39,7 @@ from .utils import make_card_id, normalize_terms, now_local
 from .taxonomy import GENRE_TAGS, SCENE_TAGS, canonicalize, taxonomy_payload
 from .workflows import DecisionWorkflow
 from .theme_color import ThemeColorService
+from .backup import BackupError, BackupService, MAX_BACKUP_BYTES
 from .app_paths import bundled_static_dir
 from .settings import CredentialStoreError, public_settings, save_user_settings
 
@@ -70,6 +72,7 @@ def create_app(
         db, ai=ai_service, metadata=metadata_service
     )
     theme_colors = ThemeColorService(db)
+    backups = BackupService(db)
 
     app = FastAPI(title="Decision Shelf API", version=__version__)
     app.state.database = db
@@ -124,6 +127,13 @@ def create_app(
             content=_error("credential_store_unavailable", str(exc), True),
         )
 
+    @app.exception_handler(BackupError)
+    async def backup_error_handler(_request: Request, exc: BackupError):
+        return JSONResponse(
+            status_code=422,
+            content=_error("invalid_backup", str(exc), False),
+        )
+
     @app.get("/api/config")
     def config():
         return {
@@ -166,6 +176,49 @@ def create_app(
         ai_service.client.config = DeepSeekConfig.from_env()
         metadata_service.registry = ProviderRegistry()
         return public_settings()
+
+    @app.get("/api/backup/export")
+    def export_backup():
+        snapshot = backups.create_snapshot()
+        filename = f"Decision-Shelf-{now_local().strftime('%Y%m%d-%H%M%S')}.dsbackup"
+        def stream_snapshot():
+            try:
+                with snapshot.open("rb") as stream:
+                    while chunk := stream.read(1024 * 1024):
+                        yield chunk
+            finally:
+                snapshot.unlink(missing_ok=True)
+
+        return StreamingResponse(
+            stream_snapshot(),
+            media_type="application/x-sqlite3",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.post("/api/backup/restore")
+    async def restore_backup(request: Request):
+        content_length = int(request.headers.get("content-length", "0") or 0)
+        if content_length > MAX_BACKUP_BYTES:
+            raise BackupError("备份文件不能超过 128 MB")
+        descriptor, raw_path = tempfile.mkstemp(
+            prefix="decision-shelf-upload-", suffix=".dsbackup", dir=db.path.parent
+        )
+        os.close(descriptor)
+        uploaded = Path(raw_path)
+        size = 0
+        try:
+            with uploaded.open("wb") as output:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > MAX_BACKUP_BYTES:
+                        raise BackupError("备份文件不能超过 128 MB")
+                    output.write(chunk)
+            if not size:
+                raise BackupError("请选择备份文件")
+            result = backups.restore(uploaded)
+            return {"ok": True, **result}
+        finally:
+            uploaded.unlink(missing_ok=True)
 
     @app.get("/api/taxonomy")
     def taxonomy():

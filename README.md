@@ -34,6 +34,12 @@ MUSICBRAINZ_CONTACT=你的联系邮箱或网址
 
 本地打包、系统要求与 GitHub Release 流程见 [桌面版发布说明](docs/DESKTOP_RELEASE.md)。
 
+## Android 应用
+
+Android 版使用原生 WebView + Chaquopy，在手机本地运行同一套 Python 决策逻辑与 SQLite 数据库。触屏书脊第一次点击展开、第二次进入详情，并提供底部导航和完整数据库备份。
+
+Android 7.0 以上的 ARM64 手机可直接安装签名 APK。手机与桌面通过 `.dsbackup` 手动迁移书架、历史和偏好，API Key 始终留在各自设备的系统凭据库。构建与固定签名说明见 [Android 文档](docs/ANDROID.md)。
+
 ## Web 应用
 
 首次安装和构建：

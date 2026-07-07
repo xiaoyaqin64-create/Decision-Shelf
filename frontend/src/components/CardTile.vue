@@ -3,8 +3,11 @@ import { computed } from 'vue'
 import type { Card } from '../types'
 import { spineWidthForId } from '../shelfLayout'
 
-const props = defineProps<{ card: Card }>()
-const emit = defineEmits<{ open: [Card] }>()
+const props = withDefaults(defineProps<{ card: Card; expanded?: boolean; touchMode?: boolean }>(), {
+  expanded: false,
+  touchMode: false,
+})
+const emit = defineEmits<{ open: [Card]; expand: [Card] }>()
 const statuses: Record<string, string> = { todo: '待体验', in_progress: '进行中', completed: '已完成', removed: '回收站' }
 const categoryColors: Record<string, string> = {
   movie: '#583039',
@@ -25,18 +28,24 @@ const completedDate = computed(() => {
   return Number.isNaN(date.getTime()) ? value.slice(0, 10) : date.toLocaleDateString('zh-CN')
 })
 const ratingText = computed(() => props.card.rating === null ? '未评分' : `${props.card.rating.toFixed(1)}/10`)
+
+function activate() {
+  if (props.touchMode && !props.expanded) emit('expand', props.card)
+  else emit('open', props.card)
+}
 </script>
 
 <template>
   <article
     class="book-spine"
-    :class="[`spine-${card.category}`, `status-${card.status}`, toneClass]"
+    :class="[`spine-${card.category}`, `status-${card.status}`, toneClass, { 'is-expanded': expanded }]"
     :style="{'--theme-color':categoryColor,'--accent-color':accentColor,'--spine-width':spineWidth}"
     role="button"
     :aria-label="`打开《${card.title}》`"
     tabindex="0"
-    @click="emit('open',card)"
-    @keydown.enter="emit('open',card)"
+    :aria-expanded="touchMode ? expanded : undefined"
+    @click="activate"
+    @keydown.enter="activate"
   >
     <div class="spine-surface" />
     <span class="spine-title">{{ card.title }}</span>

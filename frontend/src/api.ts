@@ -28,6 +28,16 @@ export const api = {
   settings: () => request<any>('/api/settings'),
   updateSettings: (payload: Record<string, unknown>) => request<any>('/api/settings', { method: 'PUT', body: JSON.stringify(payload) }),
   removeSecret: (name: 'deepseek' | 'tmdb') => request<any>(`/api/settings/${name}`, { method: 'DELETE' }),
+  restoreBackup: async (file: File) => {
+    const response = await fetch('/api/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-sqlite3' },
+      body: file,
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) throw new ApiError(body.message ?? '恢复备份失败', body.code, body.retryable)
+    return body as { ok: boolean; cards: number; history: number; safety_backup: string }
+  },
   taxonomy: () => request<Taxonomy>('/api/taxonomy'),
   cards: (params = '') => request<{ items: Card[] }>(`/api/cards${params}`),
   resolveThemeColors: (cardIds: string[]) => request<{items:Array<{id:string;theme_color:string;source:string;resolved:boolean}>}>('/api/cards/theme-colors/resolve', { method: 'POST', body: JSON.stringify({ card_ids: cardIds }) }),

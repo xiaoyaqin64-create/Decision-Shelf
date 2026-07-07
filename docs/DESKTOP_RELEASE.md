@@ -21,6 +21,8 @@
 - Windows：`%LOCALAPPDATA%\Decision Shelf`
 - macOS：`~/Library/Application Support/Decision Shelf`
 
+“设置 → 数据备份”可以导出完整 `.dsbackup`，并在 Windows、macOS 与 Android 之间恢复书架、历史和偏好。API Key 不会进入备份；恢复前会自动保留当前数据库副本。
+
 ## 本地构建
 
 Windows PowerShell：

@@ -21,4 +21,15 @@ describe('CardTile',()=>{
     expect(wrapper.find('.completed-spine-copy').text()).toContain('读完之后仍有余味')
     expect(wrapper.find('.completed-spine-copy').text()).not.toContain('不应展示的简介')
   })
+
+  it('expands on the first touch and opens on the second touch',async()=>{
+    const card:any={id:'m2',category:'movie',title:'触屏电影',status:'todo',image_url:null,theme_color:'#334455',tags:[],mood_fit:[],description:'',is_prioritized:false}
+    const wrapper=mount(CardTile,{props:{card,touchMode:true,expanded:false}})
+    await wrapper.trigger('click')
+    expect(wrapper.emitted('expand')).toHaveLength(1)
+    expect(wrapper.emitted('open')).toBeUndefined()
+    await wrapper.setProps({expanded:true})
+    await wrapper.trigger('click')
+    expect(wrapper.emitted('open')).toHaveLength(1)
+  })
 })

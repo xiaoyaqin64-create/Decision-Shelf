@@ -1,0 +1,96 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.chaquo.python'
+}
+
+def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def keystoreAlias = System.getenv('ANDROID_KEY_ALIAS')
+def keystorePassword = System.getenv('ANDROID_STORE_PASSWORD')
+def keyPasswordValue = System.getenv('ANDROID_KEY_PASSWORD')
+
+android {
+    namespace 'com.decisionshelf.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.decisionshelf.app'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '0.3.1'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword keystorePassword
+                keyAlias keystoreAlias
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            ndk { abiFilters 'arm64-v8a', 'x86_64' }
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+
+    sourceSets {
+        main {
+            python.srcDir "$buildDir/generated/python"
+        }
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = '3.11'
+        pip {
+            install 'fastapi==0.115.12'
+            install 'uvicorn==0.34.3'
+            install 'httpx==0.28.1'
+            install 'pydantic==1.10.26'
+            install 'Pillow==11.3.0'
+        }
+    }
+}
+
+def syncPythonSources = tasks.register('syncPythonSources', Sync) {
+    from("$rootDir/../decision_shelf") {
+        into 'decision_shelf'
+        exclude '**/__pycache__/**', '**/*.pyc'
+    }
+    from("$rootDir/../frontend/dist") { into 'mobile_assets' }
+    into "$buildDir/generated/python"
+    doFirst {
+        if (!file("$rootDir/../frontend/dist/index.html").exists()) {
+            throw new GradleException('Run npm build in frontend before building Android')
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn syncPythonSources }
+
+dependencies {
+    implementation 'androidx.activity:activity-ktx:1.10.1'
+    implementation 'androidx.core:core-ktx:1.16.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+}

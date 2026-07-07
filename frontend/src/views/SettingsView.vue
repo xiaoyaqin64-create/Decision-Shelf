@@ -6,6 +6,7 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const success = ref('')
+const restoring = ref(false)
 const status = ref<any>(null)
 const form = reactive({
   deepseek_api_key: '',
@@ -37,7 +38,7 @@ async function save() {
     form.deepseek_api_key = ''
     form.tmdb_read_access_token = ''
     window.dispatchEvent(new Event('decision-shelf-config-changed'))
-    success.value = '设置已保存在这台电脑上，并已立即生效。'
+    success.value = '设置已保存在这台设备上，并已立即生效。'
   } catch (e: any) { error.value = e.message }
   finally { saving.value = false }
 }
@@ -50,6 +51,25 @@ async function removeSecret(name: 'deepseek' | 'tmdb') {
     success.value = '密钥已移除。'
   } catch (e: any) { error.value = e.message }
 }
+
+async function restoreBackup(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!confirm('恢复备份会完整替换当前书架、历史和偏好。系统会先自动保存当前数据库，确定继续吗？')) {
+    input.value = ''
+    return
+  }
+  restoring.value = true
+  error.value = ''
+  success.value = ''
+  try {
+    const result = await api.restoreBackup(file)
+    success.value = `恢复完成：${result.cards} 张卡片、${result.history} 条决策记录。即将重新载入。`
+    setTimeout(() => window.location.reload(), 900)
+  } catch (e: any) { error.value = e.message }
+  finally { restoring.value = false; input.value = '' }
+}
 </script>
 
 <template>
@@ -58,7 +78,7 @@ async function removeSecret(name: 'deepseek' | 'tmdb') {
       <div>
         <p class="eyebrow">LOCAL SETTINGS</p>
         <h1>连接你的服务</h1>
-        <p>所有密钥只保存在这台电脑，不会进入书架数据库，也不会显示在页面中。</p>
+        <p>所有密钥只保存在这台设备，不会进入书架数据库，也不会显示在页面中。</p>
       </div>
     </header>
 
@@ -80,6 +100,20 @@ async function removeSecret(name: 'deepseek' | 'tmdb') {
           <label>模型名称<input v-model="form.deepseek_model" required></label>
         </div>
         <button v-if="status?.deepseek_configured" type="button" class="text-button danger-text" @click="removeSecret('deepseek')">移除 DeepSeek Key</button>
+      </section>
+
+      <section class="backup-settings">
+        <div class="settings-heading">
+          <div><h2>数据备份</h2><p>完整迁移书架、历史和偏好；API Key 不会写入备份。</p></div>
+        </div>
+        <div class="backup-actions">
+          <a class="button quiet" href="/api/backup/export" download>导出完整备份</a>
+          <label class="file-button" :class="{ disabled: restoring }">
+            {{ restoring ? '正在恢复…' : '恢复完整备份' }}
+            <input type="file" accept=".dsbackup,application/x-sqlite3" :disabled="restoring" @change="restoreBackup">
+          </label>
+        </div>
+        <small>恢复前会自动备份当前数据库；无效或损坏的文件不会覆盖现有数据。</small>
       </section>
 
       <section>

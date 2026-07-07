@@ -8,15 +8,26 @@ from typing import Mapping
 
 # Avoid discovering Linux/macOS keyring entry points in a frozen Windows app
 # (and vice versa). The selected backend remains the operating-system vault.
-if sys.platform == "win32":
+IS_ANDROID = os.getenv("DECISION_SHELF_PLATFORM") == "android"
+
+if not IS_ANDROID and sys.platform == "win32":
     os.environ.setdefault(
         "PYTHON_KEYRING_BACKEND", "keyring.backends.Windows.WinVaultKeyring"
     )
-elif sys.platform == "darwin":
+elif not IS_ANDROID and sys.platform == "darwin":
     os.environ.setdefault("PYTHON_KEYRING_BACKEND", "keyring.backends.macOS.Keyring")
 
-import keyring
-from keyring.errors import KeyringError, PasswordDeleteError
+if not IS_ANDROID:
+    import keyring
+    from keyring.errors import KeyringError, PasswordDeleteError
+else:  # Chaquopy provides the java module at runtime.
+    keyring = None  # type: ignore[assignment]
+
+    class KeyringError(Exception):
+        pass
+
+    class PasswordDeleteError(KeyringError):
+        pass
 
 
 KEYRING_SERVICE = "Decision Shelf"
@@ -40,6 +51,42 @@ class CredentialStoreError(RuntimeError):
     pass
 
 
+def _android_store():
+    from java import jclass  # type: ignore[import-not-found]
+
+    return jclass("com.decisionshelf.app.SecretStore")
+
+
+def _get_secret(account: str) -> str | None:
+    if IS_ANDROID:
+        try:
+            value = _android_store().get(account)
+            return str(value) if value else None
+        except Exception as exc:
+            raise KeyringError(str(exc)) from exc
+    return keyring.get_password(KEYRING_SERVICE, account)
+
+
+def _set_secret(account: str, value: str) -> None:
+    if IS_ANDROID:
+        try:
+            _android_store().set(account, value)
+        except Exception as exc:
+            raise KeyringError(str(exc)) from exc
+    else:
+        keyring.set_password(KEYRING_SERVICE, account, value)
+
+
+def _delete_secret(account: str) -> None:
+    if IS_ANDROID:
+        try:
+            _android_store().delete(account)
+        except Exception as exc:
+            raise KeyringError(str(exc)) from exc
+    else:
+        keyring.delete_password(KEYRING_SERVICE, account)
+
+
 def config_path() -> Path:
     return Path(os.getenv("DECISION_SHELF_CONFIG", "settings.json"))
 
@@ -60,7 +107,7 @@ def load_user_settings(path: Path | None = None) -> None:
 
     for env_key, account in SECRET_KEYS.items():
         try:
-            value = keyring.get_password(KEYRING_SERVICE, account)
+            value = _get_secret(account)
         except KeyringError:
             continue
         if value:
@@ -102,10 +149,10 @@ def save_user_settings(values: Mapping[str, str], path: Path | None = None) -> N
         value = values[env_key].strip()
         try:
             if value:
-                keyring.set_password(KEYRING_SERVICE, account, value)
+                _set_secret(account, value)
             else:
                 try:
-                    keyring.delete_password(KEYRING_SERVICE, account)
+                    _delete_secret(account)
                 except PasswordDeleteError:
                     pass
         except KeyringError as exc:

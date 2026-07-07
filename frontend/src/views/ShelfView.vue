@@ -38,12 +38,15 @@ const timeEntries = ref<TimeEntry[]>([])
 const totalMinutes = ref(0)
 const timeMinutes = ref<number | null>(null)
 const timeNote = ref('')
+const expandedCardId = ref<string | null>(null)
+const touchMode = ref(false)
 const layoutRoot = ref<HTMLElement | null>(null)
 const layoutWidth = ref(1000)
 const capacity = ref(12)
 const attemptedColors = new Set<string>()
 let resizeObserver: ResizeObserver | undefined
 let layerObserver: IntersectionObserver | undefined
+let touchQuery: MediaQueryList | undefined
 
 const category = computed<Category>(() => categories.includes(route.params.category as Category) ? route.params.category as Category : 'movie')
 const categoryCards = computed(() => cards.value.filter(card => card.category === category.value))
@@ -119,6 +122,7 @@ function setupLayerObserver() {
 }
 
 async function open(card: Card) {
+  expandedCardId.value = null
   selected.value = card
   draft.value = { ...card, tags: [...card.tags], mood_fit: [...card.mood_fit], extension: { ...card.extension } }
   notice.value = ''
@@ -130,6 +134,32 @@ async function open(card: Card) {
     const data = await api.timeEntries(card.id)
     timeEntries.value = data.items
     totalMinutes.value = data.total_minutes
+  }
+}
+
+async function expand(card: Card) {
+  expandedCardId.value = card.id
+  await nextTick()
+  document.querySelector<HTMLElement>(`[data-card-id="${card.id}"]`)
+    ?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+}
+
+function collapseExpanded(event: Event) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.book-spine')) expandedCardId.value = null
+}
+
+function handleAndroidBack(event: Event) {
+  const detail = (event as CustomEvent<{ handled: boolean }>).detail
+  if (showCompletion.value) {
+    showCompletion.value = false
+    detail.handled = true
+  } else if (selected.value) {
+    close()
+    detail.handled = true
+  } else if (expandedCardId.value) {
+    expandedCardId.value = null
+    detail.handled = true
   }
 }
 
@@ -287,6 +317,7 @@ watch(() => route.params.category, () => {
   attemptedColors.clear()
   showTrash.value = false
   query.value = ''
+  expandedCardId.value = null
   void load()
 }, { immediate: true })
 watch([layoutWidth, query], async () => { await nextTick(); setupLayerObserver() })
@@ -294,16 +325,28 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(recalc)
   if (layoutRoot.value) resizeObserver.observe(layoutRoot.value)
   recalc()
+  if (typeof window.matchMedia === 'function') {
+    touchQuery = window.matchMedia('(hover: none), (pointer: coarse)')
+    touchMode.value = Boolean(touchQuery.matches)
+  }
+  window.addEventListener('decision-shelf-back', handleAndroidBack)
 })
-onBeforeUnmount(() => { resizeObserver?.disconnect(); layerObserver?.disconnect() })
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  layerObserver?.disconnect()
+  window.removeEventListener('decision-shelf-back', handleAndroidBack)
+})
 </script>
 
 <template>
-  <section ref="layoutRoot" class="page category-library">
+  <section ref="layoutRoot" class="page category-library" @click="collapseExpanded">
     <header class="library-heading">
       <div><p class="eyebrow">{{ category.toUpperCase() }} LIBRARY</p><h1>{{ labels[category] }}书架</h1><p>每一层从左到右生长。停在书脊上，让它为你展开。</p></div>
       <RouterLink to="/add" class="button primary">＋ 加入新内容</RouterLink>
     </header>
+    <nav class="mobile-category-tabs" aria-label="书架分类">
+      <RouterLink v-for="item in categories" :key="item" :to="`/shelf/${item}`">{{ labels[item] }}</RouterLink>
+    </nav>
     <div class="library-toolbar panel">
       <input v-model="query" placeholder="搜索当前书架的标题或标签" />
       <span>{{ visibleCards.filter(card=>card.status!=='removed').length }} 张内容 · 每层约 {{ capacity }} 张</span>
@@ -319,7 +362,7 @@ onBeforeUnmount(() => { resizeObserver?.disconnect(); layerObserver?.disconnect(
           <div v-for="(layer,layerIndex) in section.layers" :key="`${section.key}-${layerIndex}-${layoutWidth}`" class="shelf-layer" :data-card-ids="layer.map(card=>card.id).join(',')">
             <div class="shelf-carcass" aria-hidden="true"><span class="shelf-back" /><span class="shelf-post shelf-post-left" /><span class="shelf-post shelf-post-right" /></div>
             <span class="layer-number">{{ String(layerIndex+1).padStart(2,'0') }}</span>
-            <div class="spine-strip"><CardTile v-for="card in layer" :key="card.id" :card="card" @open="open" /></div>
+            <div class="spine-strip"><CardTile v-for="card in layer" :key="card.id" :data-card-id="card.id" :card="card" :touch-mode="touchMode" :expanded="expandedCardId===card.id" @expand="expand" @open="open" /></div>
             <div class="shelf-rail" aria-hidden="true" />
           </div>
         </div>

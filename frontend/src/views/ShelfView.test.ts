@@ -18,9 +18,29 @@ function makeRouter() {
   return createRouter({ history: createMemoryHistory(), routes: [{ path: '/shelf/:category', component: ShelfView }, { path: '/add', component: { template: '<div />' } }] })
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('ShelfView', () => {
+  it('expands on first touch, collapses outside, and opens details on second touch', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener() {}, removeEventListener() {} })))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ items: [card] }) } as Response)
+    const router = makeRouter(); await router.push('/shelf/movie'); await router.isReady()
+    const wrapper = mount(ShelfView, { global: { plugins: [router], stubs: { DraftForm: true } } })
+    await flushPromises()
+    const spine = wrapper.find('.book-spine')
+    await spine.trigger('click')
+    expect(spine.classes()).toContain('is-expanded')
+    expect(wrapper.find('.edit-card-modal').exists()).toBe(false)
+    await wrapper.find('.library-heading').trigger('click')
+    expect(spine.classes()).not.toContain('is-expanded')
+    await spine.trigger('click')
+    await spine.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.edit-card-modal').exists()).toBe(true)
+  })
+
   it('renders an independent category as hardcover spines on complete shelf layers', async () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
     vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
