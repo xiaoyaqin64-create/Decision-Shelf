@@ -67,7 +67,7 @@ chaquopy {
             install 'uvicorn==0.34.3'
             install 'httpx==0.28.1'
             install 'pydantic==1.10.26'
-            install 'Pillow==11.3.0'
+            install 'Pillow==11.0.0'
         }
     }
 }
