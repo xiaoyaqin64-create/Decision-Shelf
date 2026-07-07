@@ -1,0 +1,76 @@
+name: Desktop builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+          cache: "pip"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build portable Windows app
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Decision-Shelf-windows-x64
+          path: release/Decision-Shelf-windows-x64.zip
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Confirm Apple Silicon runner
+        run: test "$(uname -m)" = "arm64"
+      - name: Build portable macOS app
+        run: bash scripts/build_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Decision-Shelf-macos-apple-silicon
+          path: release/Decision-Shelf-macos-apple-silicon.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Decision-Shelf-*
+          path: release
+          merge-multiple: true
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" release/*.zip
+          --repo "$GITHUB_REPOSITORY"
+          --title "Decision Shelf $GITHUB_REF_NAME"
+          --generate-notes

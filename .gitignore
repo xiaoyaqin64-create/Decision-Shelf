@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+*.egg-info/
 .env
 data/
 work/*.db
@@ -7,3 +8,10 @@ work/*.db-*
 frontend/node_modules/
 frontend/dist/
 *.bak
+build/
+dist/
+release/
+build-assets/
+build-macos/
+dist-macos/
+.venv-build/

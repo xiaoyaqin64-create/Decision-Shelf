@@ -23,6 +23,17 @@ MUSICBRAINZ_CONTACT=你的联系邮箱或网址
 
 没有 Key、网络超时或模型返回无效 JSON 时，程序会自动使用本地关键词和模板解释。
 
+## 桌面应用
+
+发布页提供无需安装 Python 或 Node.js 的便携桌面版：
+
+- Windows 10/11 x64：解压 `Decision-Shelf-windows-x64.zip`，双击 `Decision Shelf.exe`。
+- Apple Silicon macOS：解压 `Decision-Shelf-macos-apple-silicon.zip`。首版未签名，第一次需按住 Control 点击应用并选择“打开”。
+
+每位用户在应用内“设置”页面填写自己的 DeepSeek 与 TMDb 凭据。密钥保存在 Windows Credential Manager 或 macOS Keychain，不会打入应用、写入数据库或显示在页面中。用户数据保存在系统应用数据目录，替换便携应用文件夹不会丢失书架。
+
+本地打包、系统要求与 GitHub Release 流程见 [桌面版发布说明](docs/DESKTOP_RELEASE.md)。
+
 ## Web 应用
 
 首次安装和构建：

@@ -173,3 +173,18 @@ class CardImportItem(BaseModel):
 
 class CardImportRequest(BaseModel):
     items: list[CardImportItem] = Field(min_items=1, max_items=50)
+
+
+class SettingsUpdate(BaseModel):
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-flash"
+    tmdb_read_access_token: str = ""
+    musicbrainz_contact: str = ""
+
+    @validator("deepseek_base_url")
+    def valid_base_url(cls, value: str) -> str:
+        cleaned = value.strip().rstrip("/")
+        if not cleaned.startswith(("https://", "http://")):
+            raise ValueError("API 地址必须以 http:// 或 https:// 开头")
+        return cleaned

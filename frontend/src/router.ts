@@ -3,6 +3,7 @@ import ShelfView from './views/ShelfView.vue'
 import AddView from './views/AddView.vue'
 import DecisionView from './views/DecisionView.vue'
 import HistoryView from './views/HistoryView.vue'
+import SettingsView from './views/SettingsView.vue'
 
 export default createRouter({
   history: createWebHashHistory(),
@@ -12,5 +13,6 @@ export default createRouter({
     { path: '/add', component: AddView },
     { path: '/decide', component: DecisionView },
     { path: '/history', component: HistoryView },
+    { path: '/settings', component: SettingsView },
   ],
 })

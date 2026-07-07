@@ -44,6 +44,7 @@ nav a { color: #504a42; text-decoration: none; padding: .6rem .85rem; border-rad
 nav a.router-link-active { background: #e8dfd3; color: var(--ink); }
 nav a.decision-link { background: var(--ink); color: white; }
 .status-banner { padding: .55rem 1rem; text-align: center; font-size: .84rem; background: #f2dca5; color: #5e4610; }
+.status-banner a { color:inherit; font-weight:700; margin-left:.5rem; }
 .page { width: min(1420px, 94vw); margin: 0 auto; padding: 3.5rem 0 6rem; }
 .page.narrow { width: min(960px, 92vw); }
 .hero { min-height: 230px; display: flex; justify-content: space-between; align-items: center; gap: 2rem; padding: 1rem 0 3rem; }
@@ -178,6 +179,20 @@ fieldset textarea { margin-top: 1rem; }
 .preference-list > div { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding: .55rem 0; }
 .preference-list b { color: var(--sage); }
 .preference-list b.negative { color: var(--accent); }
+
+/* 本地桌面版设置 */
+.settings-page .hero p:not(.eyebrow) { color:var(--muted); max-width:650px; }
+.settings-form { padding:1.6rem; display:grid; gap:1.4rem; }
+.settings-form>section { padding:1.3rem; border:1px solid var(--line); border-radius:16px; display:grid; gap:1rem; }
+.settings-heading { display:flex; align-items:start; justify-content:space-between; gap:1rem; }
+.settings-heading h2 { margin-bottom:.25rem; }
+.settings-heading p { margin:0; color:var(--muted); font-size:.84rem; }
+.settings-heading>span { flex:none; border-radius:999px; padding:.35rem .65rem; font-size:.72rem; font-weight:700; }
+.settings-heading .configured { background:#dce8d9; color:#35553b; }
+.settings-heading .unconfigured { background:#eee7dd; color:var(--muted); }
+.settings-grid { display:grid; grid-template-columns:1.35fr 1fr; gap:1rem; }
+.settings-save { width:100%; border-radius:14px; background:var(--accent); padding:1rem; }
+button.danger-text { color:#8f352d; justify-self:start; }
 
 /* V3 横向书脊书架 */
 .shelf-page { width: min(1560px, 96vw); overflow: hidden; }

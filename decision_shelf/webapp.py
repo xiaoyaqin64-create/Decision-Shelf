@@ -26,10 +26,11 @@ from .api_schemas import (
     ExplorationResolveRequest,
     TimeEntryRequest,
     ThemeColorResolveRequest,
+    SettingsUpdate,
 )
 from .database import Database
 from .csv_import import preview_csv_import
-from .deepseek import AIService
+from .deepseek import AIService, DeepSeekConfig
 from .engine import FeedbackService
 from .metadata import MetadataError, MetadataService, ProviderRegistry
 from .models import CardDraft, DecisionContext
@@ -37,6 +38,8 @@ from .utils import make_card_id, normalize_terms, now_local
 from .taxonomy import GENRE_TAGS, SCENE_TAGS, canonicalize, taxonomy_payload
 from .workflows import DecisionWorkflow
 from .theme_color import ThemeColorService
+from .app_paths import bundled_static_dir
+from .settings import CredentialStoreError, public_settings, save_user_settings
 
 
 def _draft_from_schema(schema: CardDraftSchema) -> CardDraft:
@@ -114,6 +117,13 @@ def create_app(
             content=_error("invalid_input", first.get("msg", "请求参数不正确")),
         )
 
+    @app.exception_handler(CredentialStoreError)
+    async def credential_store_error_handler(_request: Request, exc: CredentialStoreError):
+        return JSONResponse(
+            status_code=503,
+            content=_error("credential_store_unavailable", str(exc), True),
+        )
+
     @app.get("/api/config")
     def config():
         return {
@@ -121,6 +131,41 @@ def create_app(
             "deepseek": {"available": ai_service.client.available},
             "metadata": metadata_service.status(),
         }
+
+    @app.get("/api/settings")
+    def settings():
+        return public_settings()
+
+    @app.put("/api/settings")
+    def update_settings(payload: SettingsUpdate):
+        values = {
+            "DEEPSEEK_BASE_URL": payload.deepseek_base_url,
+            "DEEPSEEK_MODEL": payload.deepseek_model,
+            "MUSICBRAINZ_CONTACT": payload.musicbrainz_contact,
+        }
+        # Empty secret fields mean “keep the saved value”; explicit removal has
+        # its own endpoint so opening the form can never erase a secret.
+        if payload.deepseek_api_key:
+            values["DEEPSEEK_API_KEY"] = payload.deepseek_api_key
+        if payload.tmdb_read_access_token:
+            values["TMDB_READ_ACCESS_TOKEN"] = payload.tmdb_read_access_token
+        save_user_settings(values)
+        ai_service.client.config = DeepSeekConfig.from_env()
+        metadata_service.registry = ProviderRegistry()
+        return public_settings()
+
+    @app.delete("/api/settings/{secret}")
+    def remove_secret(secret: str):
+        mapping = {
+            "deepseek": "DEEPSEEK_API_KEY",
+            "tmdb": "TMDB_READ_ACCESS_TOKEN",
+        }
+        if secret not in mapping:
+            raise ValueError("不支持的配置项")
+        save_user_settings({mapping[secret]: ""})
+        ai_service.client.config = DeepSeekConfig.from_env()
+        metadata_service.registry = ProviderRegistry()
+        return public_settings()
 
     @app.get("/api/taxonomy")
     def taxonomy():
@@ -423,7 +468,7 @@ def create_app(
             description_added=bool(description_source), description_mode=description_source)
         return {"draft": asdict(draft), "source": suggestion["source"], "warning": ai_service.last_error, "retried": bool(suggestion.get("retried")), "description_source": description_source}
 
-    resolved_static = Path(static_dir) if static_dir else Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    resolved_static = Path(static_dir) if static_dir else bundled_static_dir()
     if resolved_static.exists():
         app.mount("/", StaticFiles(directory=resolved_static, html=True), name="frontend")
     else:

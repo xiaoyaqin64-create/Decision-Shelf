@@ -25,6 +25,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   config: () => request<any>('/api/config'),
+  settings: () => request<any>('/api/settings'),
+  updateSettings: (payload: Record<string, unknown>) => request<any>('/api/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  removeSecret: (name: 'deepseek' | 'tmdb') => request<any>(`/api/settings/${name}`, { method: 'DELETE' }),
   taxonomy: () => request<Taxonomy>('/api/taxonomy'),
   cards: (params = '') => request<{ items: Card[] }>(`/api/cards${params}`),
   resolveThemeColors: (cardIds: string[]) => request<{items:Array<{id:string;theme_color:string;source:string;resolved:boolean}>}>('/api/cards/theme-colors/resolve', { method: 'POST', body: JSON.stringify({ card_ids: cardIds }) }),

@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from './api'
 
 const config = ref<any>(null)
-onMounted(async () => {
+async function refreshConfig() {
   try { config.value = await api.config() } catch { /* status is optional */ }
+}
+onMounted(async () => {
+  await refreshConfig()
+  window.addEventListener('decision-shelf-config-changed', refreshConfig)
 })
+onBeforeUnmount(() => window.removeEventListener('decision-shelf-config-changed', refreshConfig))
 </script>
 
 <template>
@@ -20,10 +25,11 @@ onMounted(async () => {
         <RouterLink to="/add">加入内容</RouterLink>
         <RouterLink to="/decide" class="decision-link">帮我决定</RouterLink>
         <RouterLink to="/history">历史</RouterLink>
+        <RouterLink to="/settings">设置</RouterLink>
       </nav>
     </header>
     <div v-if="config && !config.deepseek.available" class="status-banner">
-      DeepSeek 尚未配置：书架功能可用，AI 探索暂不可用。
+      DeepSeek 尚未配置：书架功能可用，AI 探索暂不可用。<RouterLink to="/settings">现在设置</RouterLink>
     </div>
     <main><RouterView /></main>
   </div>
