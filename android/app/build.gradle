@@ -86,6 +86,11 @@ def syncPythonSources = tasks.register('syncPythonSources', Sync) {
     }
 }
 tasks.named('preBuild').configure { dependsOn syncPythonSources }
+tasks.matching {
+    it.name.startsWith('merge') && it.name.endsWith('PythonSources')
+}.configureEach {
+    dependsOn syncPythonSources
+}
 
 dependencies {
     implementation 'androidx.activity:activity-ktx:1.10.1'
